@@ -5,12 +5,13 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from prototorch_regvq.datasets import (BreastCancer, CalHousing, Diabetes,
                                        Toy_Sin, WineQuality)
-from prototorch_regvq.misc.callbacks import (LmbdaCallback, ParameterCallback,
-                                             PruneLosers, vis_Callback)
+from prototorch_regvq.misc.callbacks import (PruneLosers,
+                                             RegNGParameterCallback,
+                                             vis_Callback)
 from prototorch_regvq.misc.initializer import KMeans_Initializer
 from prototorch_regvq.misc.losses import hybrid_RegNG, supervised_RegNG
 from prototorch_regvq.misc.metrics import err10, r_squared
-from prototorch_regvq.misc.visualization import VisReg2D, VisRegPCA
+from prototorch_regvq.misc.visualization import VisRegPCA
 from prototorch_regvq.RegVQ import RegNG
 
 n_prototypes = 5
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_ds, batch_size=len(y_test))
     
     
-    # Hyperparameters
+    ## Hyperparameters
     hparams = dict(
         input_dim=X_train.shape[1],
         latent_dim=n_prototypes,
@@ -74,32 +75,28 @@ if __name__ == "__main__":
         #loss=hybrid_RegNG,
     )
 
-    # Visualization
-    vis = VisReg2D(training_set,
-                   filename='lks_trained.pdf',
-                   show_last_only=False,
-                   block=False)
+    ## Visualization
+    vis = VisRegPCA( 
+            epoch_step=20, 
+            method="step", 
+            data=training_set, 
+            show_last_only=False, 
+            block=False 
+            )
 
-    # vis = VisRegPCA( 
-    #         epoch_step=20, 
-    #         method="step", 
-    #         data=training_set, 
-    #         show_last_only=False, 
-    #         block=False 
-    #         )
-
-    # Setup trainer
+    ## Setup trainer
     trainer = pl.Trainer(
         callbacks=[
             vis,
-            LmbdaCallback(),
+            vis_Callback(batch=training_set),
+            RegNGParameterCallback(end_lmbda=0.15, end_beta=0.01),
             PruneLosers(X_train, tol_epochs=50),
         ],
         max_epochs=1000,
         detect_anomaly=True,
     )
 
-    # Training loop
+    ## Training loop
     trainer.fit(model, train_loader)
 
     ## Predict and print performance

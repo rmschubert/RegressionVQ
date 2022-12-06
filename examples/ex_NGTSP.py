@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from prototorch_regvq.datasets import (BreastCancer, CalHousing, Diabetes,
                                        Toy_Sin, WineQuality)
-from prototorch_regvq.misc.callbacks import LmbdaCallback
+from prototorch_regvq.misc.callbacks import RegNGParameterCallback
 from prototorch_regvq.misc.initializer import NeuralGasInitializer
 from prototorch_regvq.misc.metrics import err10, r_squared
 from prototorch_regvq.RegVQ import NGTSP, RNGTSP
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         hparams=dict(num_prototypes=n_prototypes),
         t_loader=DataLoader(X_train, batch_size=64),
         data = (torch.Tensor(X_train), y_train), 
-        callbacks=[LmbdaCallback()], 
+        callbacks=[RegNGParameterCallback(end_lmbda=0.25)], 
         early_stop=True,
         ).generate()
 
@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         callbacks=[ 
-            LmbdaCallback(),
+            RegNGParameterCallback(),
         ],
         max_epochs=1000,
         detect_anomaly=True,

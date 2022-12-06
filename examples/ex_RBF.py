@@ -6,10 +6,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from prototorch_regvq.datasets import (BreastCancer, CalHousing, Diabetes,
                                        Toy_Sin, WineQuality)
 from prototorch_regvq.misc.initializer import (KMeans_Initializer,
-                                               NeuralGasInitializer,
                                                SigmaInitializer)
 from prototorch_regvq.misc.metrics import err10, r_squared
-from prototorch_regvq.misc.visualization import VisReg2D
 from prototorch_regvq.RegVQ import RBFNetwork
 
 num_centers = 100
@@ -58,13 +56,6 @@ if __name__ == "__main__":
 
     ## Initialize Centers
     init_centers = KMeans_Initializer(init_params, data=X_train).generate()
-    # init_centers = NeuralGasInitializer( 
-    #     hparams=dict(num_prototypes=num_centers),
-    #     t_loader=train_loader,
-    #     data = torch.Tensor(X_train), 
-    #     callbacks=[LmbdaCallback()], 
-    #     early_stop=True, 
-    #     ).generate()
     
     ## initialize scaling of gaussian-rbfs
     sigmas = SigmaInitializer(X_train, init_centers).generate()

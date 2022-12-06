@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from prototorch_regvq.datasets import (CalHousing, Diabetes, Toy_Sin,
                                        WineQuality)
 from prototorch_regvq.misc.callbacks import HardRLVQCallback, SoftRLVQCallback
-from prototorch_regvq.misc.initializer import (KMeans_Initializer,
-                                               SigmaInitializer)
+from prototorch_regvq.misc.initializer import KMeans_Initializer
 from prototorch_regvq.misc.losses import softRLVQ
 from prototorch_regvq.misc.metrics import err10, r_squared
 from prototorch_regvq.misc.visualization import VisReg2D

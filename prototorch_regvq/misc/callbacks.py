@@ -50,7 +50,7 @@ class vis_Callback(Callback):
         plt.close()
 
 
-class LmbdaCallback(Callback):
+class RegNGParameterCallback(Callback):
     ## Neural Gas is very strict for small values
     ## of lambda, therefore leaving lambda > ~ 0.1 
     ## increases flexibility of the prototypes
@@ -60,17 +60,19 @@ class LmbdaCallback(Callback):
     ## Otherwise this might result in an
     ## adiabatic optimization
 
-    def __init__(self):
-        super(LmbdaCallback, self).__init__()
+    def __init__(self, end_lmbda: float, end_beta: float = 1.):
+        self.end_lmbda = end_lmbda
+        self.end_beta = end_beta
+        super(RegNGParameterCallback, self).__init__()
 
     def new_lmbda(self, current_e, max_e):
         x = current_e / max_e
-        return torch.Tensor([0.15 ** x])
+        return torch.Tensor([self.end_lmbda ** x])
 
 
     def new_beta(self, max_e, current_e):
         x = current_e / max_e
-        return torch.Tensor([0.01**(x)])
+        return torch.Tensor([self.end_beta ** x])
 
 
     def on_train_epoch_start(self, trainer, pl_module) -> None:
@@ -89,7 +91,7 @@ class LmbdaCallback(Callback):
         pl_module.load_state_dict(state_dict)
 
 
-class ParameterCallback(Callback):
+class InitWeightsLinLayer(Callback):
     ## Used for a 'good guess' of initial parameters
     ## in a linear layer
     def __init__(self, batch):
