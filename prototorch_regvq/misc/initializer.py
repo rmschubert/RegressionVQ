@@ -6,8 +6,7 @@ import pytorch_lightning as pl
 import torch
 from prototorch.core.distances import squared_euclidean_distance
 from prototorch.core.initializers import MCI, AbstractComponentsInitializer
-from prototorch.models import NeuralGas, VisNG2D
-from prototorch.utils.utils import parse_data_arg
+from prototorch.models import NeuralGas
 from pytorch_lightning.callbacks import Callback, EarlyStopping
 from torch_kmeans import KMeans
 

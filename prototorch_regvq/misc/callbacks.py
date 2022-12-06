@@ -23,13 +23,13 @@ class vis_Callback(Callback):
         self.name = name
 
     def on_train_end(self, trainer, pl_module):
-        x, y = self.x, self.y.cpu().detach().numpy()
+        x, y = self.x, self.y
 
         device = pl_module.device
 
         with torch.no_grad():
             x = torch.Tensor(x).to(device)
-            preds = pl_module.predict(x).cpu().detach().numpy()
+            preds = pl_module.predict(x).numpy()
             prototypes = pl_module.prototypes
             prototypes = torch.Tensor(prototypes).to(device)
 
@@ -39,9 +39,11 @@ class vis_Callback(Callback):
         plt.plot(x_vals, sorted(y), c='b', label='targets')
         plt.plot(x_vals, sorted(preds), c='c', label='predictions')
         plt.legend()
-        plt.title('Ratio Proto/Data = ' + '%.5f' % pro_to_data_ratio + ' (' +
-                  str(prototypes.shape[0]) + ' prototypes) ' +
-                  str(trainer.max_epochs) + ' epochs')
+        plt.title( 
+            f"""ratio proto/data = {pro_to_data_ratio:.5f}.
+            {prototypes.shape[0]} Prototypes.
+            {trainer.max_epochs} epochs.""" 
+            )
         if self.name is not None:
             plt.savefig('./' + self.name, dpi=600)
         plt.show()
@@ -77,9 +79,8 @@ class LmbdaCallback(Callback):
             state_dict['lmbda'] = self.new_lmbda(trainer.current_epoch,
                                                  trainer.max_epochs)
         else:
-            pl_module.hparams["lm"] = self.new_lmbda(trainer.current_epoch,
-                                              trainer.max_epochs)
-            print(pl_module.energy_layer.lm)
+            pl_module.energy_layer.lm = self.new_lmbda(trainer.current_epoch, 
+                                                        trainer.max_epochs)
 
         if 'beta' in state_dict.keys():
             state_dict['beta'] = self.new_beta(trainer.max_epochs,
