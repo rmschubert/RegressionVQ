@@ -87,7 +87,7 @@ class RegVQ(ProtoTorchBolt):
                 self.biases = Parameter(b, requires_grad=True)
         
         ## prediction layer
-        self.regval_prediction_layer = torch.nn.Identity()
+        self.regval_prediction_layer = nn.Module()
     
     def alter_parameters(self, altered_parameters: Iterable[Tuple[str, Parameter]]):
         f"""
@@ -276,6 +276,8 @@ class RBFNetwork(RegVQ):
         
         else:
             self.prototypes.requires_grad = supervised
+        
+        self.regval_prediction_layer = nn.Identity()
 
         self.loss = nn.MSELoss(reduction='sum')
     
