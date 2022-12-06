@@ -88,7 +88,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         callbacks=[
             vis,
-            vis_Callback(batch=training_set),
+            vis_Callback(batch=(X, y)),
             RegNGParameterCallback(end_lmbda=0.15, end_beta=0.01),
             PruneLosers(X_train, tol_epochs=50),
         ],

@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     trainer = pl.Trainer(
         callbacks=[ 
-            RegNGParameterCallback(),
+            RegNGParameterCallback(end_lmbda=0.2),
         ],
         max_epochs=1000,
         detect_anomaly=True,
