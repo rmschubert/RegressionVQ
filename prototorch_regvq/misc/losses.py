@@ -33,10 +33,23 @@ def supervised_RegNG(lmbda, beta, reg_vals, y, proto_distances):
     cc = ngh_fun(class_ranks, lmbda)
     
     ## smaller lambda for regression adaptation
-    fc = ngh_fun(proto_distances, 0.1*lmbda)
+    ## TODO: Alter the way to indicate a differing lambda schedule - custom parameter etc.
+    fc = ngh_fun(proto_distances, 0.4*lmbda)
 
 
     loss = beta * torch.mean(torch.sum(cc * proto_distances, 0)) + (1 - beta) * torch.mean(torch.sum(fc * reg_val_distances, 0))
+
+    return loss
+
+def regsensitive_RegNG(lmbda, beta, reg_vals, y, proto_distances):
+    # TODO: Consider backbone (Omega matrix) here!
+    reg_val_distances = calc_regVal_distances(reg_vals, y)
+    reg_ranks = ranks_fun(reg_val_distances)
+    rsc = ngh_fun(reg_ranks, lmbda)
+    fc = ngh_fun(proto_distances, 0.2 * lmbda)
+
+    loss = beta * torch.mean(torch.sum(rsc * proto_distances, 0)) + (
+        1 - beta) * torch.mean(torch.sum(fc * reg_val_distances))
 
     return loss
 

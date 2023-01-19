@@ -451,7 +451,6 @@ class RegNG(RegVQ):
 
         distances = self.compute_distances(x)
         apps = self.approximations(x)
-        print(self.weights.grad)
         loss = self.loss(apps, y, distances)
         return loss
 
