@@ -120,56 +120,76 @@ class PruneLosers(Callback):
     def __init__(
         self,
         data: torch.Tensor,
+        at_train_end_only: bool=True,
         tol_epochs: int = 10,
     ):
 
         self.x = data
+        self.at_train_end = at_train_end_only
         self.tol_epochs = tol_epochs
         self.loser_counts: List[int] = [0]
 
+    def _get_loser_mask(self, pl_module):
+        winners = pl_module.predict_winner(self.x)
+        plabels = pl_module.prototype_labels
+        return [False if label in winners else True for label in plabels]
+
+    def _prune_parameters(self, mask, pl_module):
+        prototypes = pl_module.prototypes
+        weights = pl_module.weights
+        plabels = pl_module.prototype_labels
+
+        new_protos = prototypes[mask, :]
+        new_weights = weights[:, mask]
+        rgp = prototypes.requires_grad
+
+        altered_params = list([
+            ('prototypes', Parameter(new_protos, requires_grad=rgp)),
+            ('weights', Parameter(new_weights)),
+        ], )
+
+        if pl_module.bias_on:
+            s = len(pl_module.biases)
+            if s > 1:
+                new_biases = new_weights[-1, :]
+            else:
+                new_biases = new_weights[-1]
+
+            altered_params.append(('biases', Parameter(new_biases)))
+
+        pl_module.alter_parameters(altered_params)
+        pl_module.prototype_labels = plabels[mask]
+
+        warn(warning_pruned(len(prototypes), len(new_protos)))
+    
     def on_train_epoch_end(self, trainer, pl_module):
-        with torch.no_grad():
-            prototypes = pl_module.prototypes
-            weights = pl_module.weights
+        if not self.at_train_end:
+            with torch.no_grad():
+                losers = self.get_mask(pl_module)
 
-            distances = pl_module.compute_distances(self.x)
-            _, winners = torch.min(distances, 1)
-            plabels = pl_module.prototype_labels
-            losers = [False if label in winners else True for label in plabels]
-            
-            old_counts = self.loser_counts
-            current_counts = [sum(p) for p in zip(losers, cycle(old_counts))]
-            winner_mask = [True if count < self.tol_epochs else False for count in current_counts]
+                old_counts = self.loser_counts
+                current_counts = [
+                    sum(p) for p in zip(losers, cycle(old_counts))
+                ]
+                winner_mask = [
+                    True if count < self.tol_epochs else False
+                    for count in current_counts
+                ]
 
-            self.loser_counts = [c for c, w in zip(current_counts, winner_mask) if w]
+                self.loser_counts = [
+                    c for c, w in zip(current_counts, winner_mask) if w
+                ]
 
-            if not all(winner_mask):
+                if not all(winner_mask):
+                    self._prune_parameters(winner_mask, pl_module)
+                    return True
 
-                new_protos = prototypes[winner_mask, :]
-                new_weights = weights[:, winner_mask]
-                rgp = prototypes.requires_grad
-
-                altered_params = list( 
-                    [ 
-                        ('prototypes', Parameter(new_protos, requires_grad=rgp)), 
-                        ('weights', Parameter(new_weights)), 
-                    ], 
-                    )
-
-                if pl_module.bias_on:
-                    s = len(pl_module.biases)
-                    if s > 1:
-                        new_biases = new_weights[-1, :]
-                    else:
-                        new_biases = new_weights[-1]
-                    
-                    altered_params.append(('biases', Parameter(new_biases)))
-                
-                pl_module.alter_parameters(altered_params)
-                pl_module.prototype_labels = plabels[winner_mask]
-
-                warn(warning_pruned(len(prototypes), len(new_protos)))
-            
+    def on_train_end(self, trainer, pl_module):
+        if self.at_train_end:
+            with torch.no_grad():
+                losers = self._get_loser_mask(pl_module)
+                winner_mask = [not x for x in losers]
+                self._prune_parameters(winner_mask, pl_module)
                 return True
         
         
