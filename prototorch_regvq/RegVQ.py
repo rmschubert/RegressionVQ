@@ -3,7 +3,8 @@ from typing import Callable, Iterable, List, Optional, Tuple, Union
 
 import torch
 from prototorch.core.competitions import WTAC
-from prototorch.core.distances import squared_euclidean_distance
+from prototorch.core.distances import (omega_distance,
+                                       squared_euclidean_distance)
 from prototorch.models.abstract import ProtoTorchBolt
 from prototorch.nn import LossLayer
 from torch import nn
@@ -11,8 +12,9 @@ from torch.nn.parameter import Parameter
 
 from prototorch_regvq.misc.competition import WTAC_RLVQ, WTAC_regression
 from prototorch_regvq.misc.initializer import init_parameters
-from prototorch_regvq.misc.losses import ngtsp_loss, softRLVQ, supervised_RegNG
-from prototorch_regvq.misc.metrics import err10, r_squared
+from prototorch_regvq.misc.losses import (ngtsp_loss, regsensitive_RegNG,
+                                          softRLVQ, supervised_RegNG)
+from prototorch_regvq.misc.metrics import err10, r_squared, std_error
 
 
 class RegVQ(ProtoTorchBolt):
@@ -22,10 +24,12 @@ class RegVQ(ProtoTorchBolt):
         hparams,
         targets: torch.Tensor,
         prototypes: Optional[torch.Tensor] = None,
+        omega_dist: bool  = False,
         order: Optional[int] = None,
-        warm_start: bool = True,
+        warm_start: bool = False,
         norm_targets: bool = True,
         bias_on: bool = True,
+        accelerate: bool = True,
         **kwargs,
     ):
 
@@ -35,6 +39,7 @@ class RegVQ(ProtoTorchBolt):
         self.warm_start = warm_start
         self.norm_y = norm_targets
         self.bias_on = bias_on
+        self.acc = accelerate
 
         ## if the targets should be normalized during training
         ## the corresponding max_value will be saved
@@ -52,6 +57,7 @@ class RegVQ(ProtoTorchBolt):
             self.prototypes = Parameter(prototypes, requires_grad=False)
             self.prototype_labels = torch.LongTensor(range(len(prototypes)))
             self.competition_layer = WTAC()
+            self.n_prototypes = len(prototypes)
 
         idim = self.hparams.input_dim
         odim = self.hparams.latent_dim
@@ -86,8 +92,19 @@ class RegVQ(ProtoTorchBolt):
                     b = fun_paras[-1, :]
                 self.biases = Parameter(b, requires_grad=True)
         
+        if omega_dist:
+            self.omega = Parameter(torch.ones(self.hparams.omega_shape, requires_grad=True))
+            distance_measure = partial(omega_distance, omega=self.omega)
+        else:
+            distance_measure = squared_euclidean_distance
+        
+        self.distance_measure = distance_measure
+        
         ## prediction layer
         self.regval_prediction_layer = nn.Module()
+
+        ## acceleration by batch_norm if accelerate is set true
+        self.acc_layer = nn.BatchNorm1d(idim)
     
     def alter_parameters(self, altered_parameters: Iterable[Tuple[str, Parameter]]):
         f"""
@@ -143,10 +160,10 @@ class RegVQ(ProtoTorchBolt):
 
     def compute_distances(self, x):
         if self.prototypes is None:
-            return squared_euclidean_distance(x, x)
+            return self.distance_measure(x, x)
         else:
             protos = self.prototypes
-            return squared_euclidean_distance(x, protos)
+            return self.distance_measure(x, protos)
     
     def _log_metric(self, fun: Callable, batch, tag: str):
         """
@@ -177,6 +194,7 @@ class RegVQ(ProtoTorchBolt):
         self.log("loss", train_loss)
         self._log_metric(r_squared, batch, tag="RSq")
         self._log_metric(err10, batch, tag="Err10")
+        self._log_metric(std_error, batch, tag="StdErr")
         return train_loss
 
     def predict_winner(self, x):
@@ -209,6 +227,7 @@ class RegVQ(ProtoTorchBolt):
             test_loss = self.shared_step(batch)
         self._log_metric(r_squared, batch, tag="test_RSq")
         self._log_metric(err10, batch, tag="test_Err10")
+        self._log_metric(std_error, batch, tag="test_SEP")
         return test_loss
 
 
@@ -285,7 +304,7 @@ class RBFNetwork(RegVQ):
         """
         RBF-Kernel implemented as Gaussian-type, i.e.
 
-        rbf(x) = exp(-(x - w)**2 / (2*sigma**2))
+        rbf(x) = exp(-s*(x - w)**2)
 
         With (x - w)**2 here as the distances Argument
         
@@ -297,15 +316,17 @@ class RBFNetwork(RegVQ):
             torch.Tensor: RBF-Kernel
         """
         s = sigma.to(self.device)
-        pref = -1 / (2 * s.pow(2))
-        rbf = torch.exp(pref * distances)
+        rbf = torch.exp(-s * distances)
         return rbf
 
     def approximations(self, d, s):
+        if self.acc:
+            d = self.acc_layer(d)
         if not self.warm_start:
             return self.linLayer(self.rbf_kernel(d, s)).squeeze()
         else:
             return self.check_dims(self.rbf_kernel(d, s)) @ self.weights
+    
     
     def pre_step(self, x):
         distances = self.compute_distances(x)
@@ -379,6 +400,8 @@ class RLVQ(RegVQ):
         if self.norm_y:
             y = y / self.max_y
 
+        if self.acc:
+            x = self.acc_layer(x)
         distances = self.compute_distances(x)
         probabilities = self.compute_probabilities(distances)
         loss = self.loss(probabilities, self.cplabel, y)
@@ -432,6 +455,8 @@ class RegNG(RegVQ):
             return torch.cat(tuple(parts), dim=1)
 
     def approximations(self, x):
+        if self.acc:
+            x = self.acc_layer(x)
         pol_x = self.polynomial_transform(x)
         if not self.warm_start:
             return self.linLayer(pol_x).squeeze()
@@ -509,7 +534,7 @@ class RNGTSP(NGTSP):
     """
     
     def __init__(self, hparams, **kwargs):
-        super().__init__(hparams, **kwargs)
+        super(RNGTSP, self).__init__(hparams, **kwargs)
     
     def pre_step(self, x):
         dists = self.compute_distances(x)
@@ -529,5 +554,9 @@ class RNGTSP(NGTSP):
         loss = self.loss(apps, distances, y, self.lmbda)
         return loss
 
+
+class RegSeNG(RegNG):
+    def __init__(self, hparams, **kwargs):
+        super(RegSeNG, self).__init__(hparams, loss=regsensitive_RegNG, **kwargs)
 
 

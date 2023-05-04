@@ -10,12 +10,6 @@ from prototorch.models import NeuralGas
 from pytorch_lightning.callbacks import Callback, EarlyStopping
 from torch_kmeans import KMeans
 
-warning_pruned = lambda x, y : f""" \n
---------------------------------------------\n
-    Attention: {x - y} Prototypes have been pruned!
-    Original size was {x}.\n
-----------------------------------------------"""
-
 
 class KMeans_Initializer(AbstractComponentsInitializer):
     ## uses https://pypi.org/project/torch-kmeans/
@@ -36,24 +30,10 @@ class KMeans_Initializer(AbstractComponentsInitializer):
         components = self.transform(center + drift)
         return components
 
-    def prune_loser(self, prototypes):
-        dists = squared_euclidean_distance(self.data, prototypes)
-        _, winners = torch.min(dists, 1)
-        plabels = torch.linspace(0, len(prototypes) - 1, len(prototypes))
-        loser_mask = [False if w not in winners else True for w in plabels]
-        new_protos = prototypes[loser_mask, :]
-        
-        if len(new_protos) != len(prototypes):
-            warn(warning_pruned(len(prototypes), len(new_protos)))
-        
-        return new_protos
-
-    
     def generate(self):
         model_result = self.model(self.data.unsqueeze(0))
         centers = model_result.centers.squeeze()
-        components = self.prune_loser(centers)
-        components = self.generate_end_hook(components)
+        components = self.generate_end_hook(centers)
         return components
 
 
@@ -65,7 +45,7 @@ class NeuralGasInitializer(AbstractComponentsInitializer):
         data: Tuple[torch.Tensor, torch.Tensor],
         callbacks: List[Callback],
         early_stop: bool = True, 
-        max_epochs: int = 1000,
+        max_epochs: int = 100,
         noise: float=0.0, 
         transform: Callable=torch.nn.Identity(), 
         ):
@@ -75,12 +55,11 @@ class NeuralGasInitializer(AbstractComponentsInitializer):
         self.data, self.y = data
         
         self.callbacks = callbacks
-        #self.callbacks.append(VisNG2D(data))
         if early_stop:
             es = EarlyStopping(
                     monitor="loss",
-                    min_delta=0.0001,
-                    patience=200,
+                    min_delta=0.001,
+                    patience=60,
                     mode="min",
                     verbose=False,
                     check_on_train_epoch_end=True,
@@ -96,18 +75,6 @@ class NeuralGasInitializer(AbstractComponentsInitializer):
         components = self.transform(center)
         return components
     
-    def prune_loser(self, prototypes):
-        dists = squared_euclidean_distance(self.data, prototypes)
-        _, winners = torch.min(dists, 1)
-        plabels = torch.LongTensor(range(len(prototypes)))
-        loser_mask = [True if w in winners else False for w in plabels]
-        new_protos = prototypes[loser_mask, :]
-        
-        if len(new_protos) != len(prototypes):
-            warn(warning_pruned(len(prototypes), len(new_protos)))
-        
-        return new_protos
-    
     def generate(self):
         trainer = pl.Trainer( 
             max_epochs=self.max_epochs,
@@ -115,8 +82,7 @@ class NeuralGasInitializer(AbstractComponentsInitializer):
             detect_anomaly=True,
         )
         trainer.fit(self.model, self.train_loader)
-        components = self.prune_loser(self.model.prototypes)
-        components = self.generate_end_hook(components)
+        components = self.generate_end_hook(self.model.prototypes)
         return components
         
 
@@ -142,9 +108,6 @@ class SigmaInitializer(AbstractComponentsInitializer):
         grouped_x = [np.array([x[0].numpy() for x in x_and_l if x[1] == l]) for l in labels]
         sigmas = [np.std(X) for X in grouped_x]
         return self.generate_end_hook(torch.Tensor(sigmas))
-
-
-
 
 def init_parameters( 
     y: torch.Tensor, 

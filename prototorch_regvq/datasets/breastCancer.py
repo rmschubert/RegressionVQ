@@ -11,7 +11,7 @@ from torch.utils.data import TensorDataset
 class BreastCancer(TensorDataset):
 
     def __init__(self, target: int = 3):
-        ds = pd.read_csv('./prototorch_relvq/datasets/wpbc.csv', sep=',')
+        ds = pd.read_csv('./prototorch_regvq/datasets/wpbc.csv', sep=',')
         data = pd.DataFrame(ds.drop(ds.columns[target], axis=1))
         targets = ds.iloc[:, target]
         scaler = MinMaxScaler()

@@ -1,6 +1,7 @@
 import torch
 from torch.nn.parameter import Parameter
 
+## deprecated
 
 class ParaLayer(torch.nn.Module):
     def __init__(self, indim: int, outdim: int, bias: bool=True):

@@ -29,7 +29,7 @@ class vis_Callback(Callback):
 
         with torch.no_grad():
             x = torch.Tensor(x).to(device)
-            preds = pl_module.predict(x).numpy()
+            preds = pl_module.predict((x, y)).numpy()
             prototypes = pl_module.prototypes
             prototypes = torch.Tensor(prototypes).to(device)
 
@@ -40,9 +40,7 @@ class vis_Callback(Callback):
         plt.plot(x_vals, sorted(preds), c='c', label='predictions')
         plt.legend()
         plt.title( 
-            f"""ratio proto/data = {pro_to_data_ratio:.5f}.
-            {prototypes.shape[0]} Prototypes.
-            {trainer.max_epochs} epochs.""" 
+            f"ratio proto/data = {pro_to_data_ratio:.5f}.{prototypes.shape[0]} Prototypes. {trainer.max_epochs} epochs."
             )
         if self.name is not None:
             plt.savefig('./' + self.name, dpi=600)
@@ -60,33 +58,30 @@ class RegNGParameterCallback(Callback):
     ## Otherwise this might result in an
     ## adiabatic optimization
 
-    def __init__(self, end_lmbda: float, end_beta: float = 1.):
-        self.end_lmbda = end_lmbda
-        self.end_beta = end_beta
+    def __init__(self, lmbda: float, beta: float = 1., decay_lmbda: float = 0.99, decay_beta: float = 0.99):
+        self.l = lmbda
+        self.b = beta
+        self.dl = decay_lmbda
+        self.db = decay_beta
         super(RegNGParameterCallback, self).__init__()
 
-    def new_lmbda(self, current_e, max_e):
-        x = current_e / max_e
-        return torch.Tensor([self.end_lmbda ** x])
+    def new_lmbda(self):
+        return torch.Tensor([self.l * self.dl])
 
-
-    def new_beta(self, max_e, current_e):
-        x = current_e / max_e
-        return torch.Tensor([self.end_beta ** x])
-
+    def new_beta(self):
+        return torch.Tensor([self.b * self.db])
 
     def on_train_epoch_start(self, trainer, pl_module) -> None:
         state_dict = pl_module.state_dict()
+        x = (trainer.current_epoch + 1) / trainer.max_epochs
         if 'lmbda' in state_dict.keys():
-            state_dict['lmbda'] = self.new_lmbda(trainer.current_epoch,
-                                                 trainer.max_epochs)
+            state_dict['lmbda'] = self.new_lmbda()
         else:
-            pl_module.energy_layer.lm = self.new_lmbda(trainer.current_epoch, 
-                                                        trainer.max_epochs)
+            lm = pl_module.energy_layer.lm
+            pl_module.energy_layer.lm = lm * ((1e-2 / lm) ** x)
 
         if 'beta' in state_dict.keys():
-            state_dict['beta'] = self.new_beta(trainer.max_epochs,
-                                               trainer.current_epoch)
+            state_dict['beta'] = self.new_beta()
 
         pl_module.load_state_dict(state_dict)
 
@@ -214,14 +209,36 @@ class HardRLVQCallback(Callback):
 
 class SoftRLVQCallback(Callback):
 
-    def __init__(self) -> None:
+    def __init__(self, train_size: int) -> None:
         super(SoftRLVQCallback, self).__init__()
-
+        self.anneal_size = train_size
+    
     def new_gamma(self, current_e):
-        return torch.Tensor([1.5 * 50 / (50 + current_e)])
+        return torch.Tensor([5. * (5 * self.anneal_size) / ((5 * self.anneal_size) + current_e)])
     
     def on_train_epoch_start(self, trainer, pl_module) -> None:
         state_dict = pl_module.state_dict()
         state_dict['gamma'] = self.new_gamma(trainer.current_epoch)
         pl_module.load_state_dict(state_dict)
         
+class RBFCallback(Callback):
+
+    def __init__(self) -> None:
+        super(RBFCallback, self).__init__()
+
+    def on_train_epoch_start(self, trainer, pl_module) -> None:
+        sd = pl_module.state_dict()
+        s = sd['sigma']
+        sd['sigma'] = torch.where(s <= 5e-2, s + 0.1, s)
+        pl_module.load_state_dict(sd)
+        
+
+class OmegaCallback(Callback):
+    def __init__(self) -> None:
+        super(OmegaCallback, self).__init__()
+
+    def on_train_epoch_start(self, trainer, pl_module) -> None:
+        sd = pl_module.state_dict()
+        o = sd['omega']
+        sd['omega'] = o / (torch.trace(o.T @ o))
+        pl_module.load_state_dict(sd)

@@ -15,7 +15,6 @@ warning_method = lambda x, y: f""" \n
 class VisReg2D(Vis2DAbstract):
 
     def __init__(self, *args, **kwargs):
-        self.filename = kwargs.pop('filename')
         super().__init__(*args, **kwargs)
         self.xlabel = "Data dimension 1"
         self.ylabel = "Data dimension 2"
