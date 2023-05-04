@@ -13,7 +13,8 @@ The datasets included are WineQuality-red, California Housing, Breastcancer Prog
 
 ### Parameter Setting and Modelling
 ---
-For the visibility parameter in Neural Gas we used $\lambda_{NG}(t) = 10 \cdot (0.95) ^ t$ for training time $t$ (here the epoch number which was in total 100 epochs) to initialize the Neural Gas prototypes for the models NGTSP and RNGTSP. For the regression setting we chose $\lambda(t) = 0.999 ^ t$ and $\lambda_{reg}(t) = 0.5 \cdot \lambda(t)$. As for the learning rate $\epsilon(t)$ we used an exponential decay with $\epsilon(t) = 0.01^t$. Furthermore, the RBFs are modelled as 
+All models were initialized via $k$-Means, except for the hybrid ones, which used Neural Gas (NGTSP, xNGTSP). The training time is here the epoch number which was in total 100 epochs, except for California Housing, which was 10 epochs, due to the size of the dataset.
+For the visibility parameter in Neural Gas we used $\lambda_{NG}(t) = 10 \cdot (0.95) ^ t$ for training time $t$ to initialize the Neural Gas prototypes for the models NGTSP and RNGTSP. For the regression setting we chose $\lambda(t) = 0.999 ^ t$ and $\lambda_{reg}(t) = 0.5 \cdot \lambda(t)$ and as for the balancing $\alpha(t) = 0.99^t$. As for the learning rate $\epsilon(t)$ we used an exponential decay with $\epsilon(t) = 0.01^t$. Furthermore, the RBFs are modelled as 
 
 $$g_{RBF}(\sigma, x, p_i) = exp\left(- \sigma_i ||x - p_i||^2\right)$$
 
